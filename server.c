@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 const int PORT = 4200;
+const char* database = "users.db";
 socklen_t sockLength = (socklen_t)sizeof(struct sockaddr_in); 
 extern int errno;
 
@@ -71,27 +72,43 @@ struct sockaddr_in initialize_server()
   return server;
 }
 
+void initialize_db(sqlite3 *db)
+{
+  int status;
+  status = sqlite3_open(database,&db);
+
+  if(status != SQLITE_OK)
+  {
+    sqlite3_close(db);
+    printError("Cannot open the database!");
+  }
+}
+
 void set_socket(int *socketD)
 {
   if((*socketD = socket(AF_INET,SOCK_STREAM,0)) == -1)
   {
     printError("Error at creating the socket");
   }
-  setsockopt(*socketD, SOL_SOCKET, SO_REUSEADDR, (const void*)1, sizeof(int));
+  int opt=1;
+  setsockopt(*socketD, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 }
 
 int interact(Thread *thread)
 {
   int msgLength;
-  if(read(thread->clientId,&msgLength,sizeof(int)) <= 0){
-    perror("Read() error in thread");
+  int numberRead;
+  if((numberRead = read(thread->clientId,&msgLength,sizeof(int))) <= 0){
+    if(numberRead < 0)
+      perror("Read() error in thread");
+    else printf("Client %d disconnected \n",thread->clientId);
     return 0;
   }
   
   char *message;
   message = (char*)malloc(msgLength+1);
 
-  if(read(thread->clientId,message,msgLength) <= 0){
+  if(read(thread->clientId,message,msgLength) < 0){
     perror("Error at reading of the message in thread");
     return 0;
   }
@@ -107,10 +124,13 @@ int interact(Thread *thread)
 
 void lobby(Thread *thread)
 {
-  printf("[Thread %d] - Wait for the message: \n",thread->threadId);
-  
-  fflush(stdout);
   pthread_detach(pthread_self());
+
+  printf("[Thread %d] - Waiting for authentication: \n",thread->threadId);
+  fflush(stdout);
+
+  
+
   while(1)
   {
     int answer = interact(thread);
@@ -118,7 +138,6 @@ void lobby(Thread *thread)
   }
   close((intptr_t)thread);
 }
-
 
 
 int main() {
@@ -130,6 +149,9 @@ int main() {
 
   set_socket(&socketD);
 
+  sqlite3 *db;
+  initialize_db(db);
+
   //Bind the socket.
   if(bind(socketD,(struct sockaddr*)&serverStruct,sizeof(struct sockaddr)) == -1)
     printError("Error at binding the socket");
@@ -140,13 +162,13 @@ int main() {
 
   int index = 0;
 
+  printf("[Server] Waiting at port %d \n",PORT);
   //Wait for the clients to connect and then serve them.
   while(1)
   {
     int clientId;
     Thread *currThread;
     
-    printf("[Server] Waiting at port %d \n",PORT);
     //Accept a client in blocking way.
     if(( clientId = accept(socketD,(struct sockaddr*) &clientStruct,&sockLength)) < 0)
     {
@@ -158,7 +180,7 @@ int main() {
     currThread->threadId = index++ ;
     currThread->clientId = clientId;
 
-    pthread_create(&threads[index],NULL,(void*)&lobby, currThread);
+    pthread_create(&threads[index%100],NULL,(void*)&lobby, currThread);
   }
 
   return 0; 

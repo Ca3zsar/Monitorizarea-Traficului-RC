@@ -71,6 +71,12 @@ int main(int argc, char *argv[]) {
         {
             printError("Nothing to read!");
         }
+        message[msgLength-1] = '\0';
+        if(strcmp(message,"quit")==0)
+        {
+            printf("Quit message was read\n");
+            break;
+        }
 
         //First write the length of the message
         if(write(socketD,&msgLength,sizeof(int)) < 0)
@@ -87,7 +93,8 @@ int main(int argc, char *argv[]) {
         {
             printf("Error at reading from server");
         }
+        printf("The length of your message is: %d \n",newMsgLength);
     }
-
+    close(socketD);
 
 }
