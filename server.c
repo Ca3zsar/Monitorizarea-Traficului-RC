@@ -21,6 +21,9 @@ const char *database = "users.db";
 socklen_t sockLength = (socklen_t)sizeof(struct sockaddr_in);
 extern int errno;
 
+fd_set activeFD;
+fd_set readFD;
+
 int keepRunning = 1;
 
 void printError(char *message) {
@@ -31,6 +34,7 @@ void printError(char *message) {
 typedef struct Thread {
   int threadId;
   int clientId;
+  int logged;
   struct sockaddr_in *client;
 } Thread;
 
@@ -123,11 +127,26 @@ int interact(Thread *thread) {
   return 1;
 }
 
+int login(Thread *thread)
+{
+  sqlite3_stmt *result;
+  
+
+  return 0;
+}
+
 void lobby(Thread *thread) {
   pthread_detach(pthread_self());
 
   printf("[Thread %d] - Waiting for authentication: \n", thread->threadId);
   fflush(stdout);
+
+  if(!login(thread))
+    FD_CLR(thread->clientId, &activeFD);
+    close(thread->clientId);
+
+    close((intptr_t)thread);
+    return;
 
   while (keepRunning) {
     int answer = interact(thread);
@@ -149,8 +168,6 @@ int main() {
   int socketD;
   pthread_t threads[100];
 
-  fd_set activeFD;
-  fd_set readFD;
   struct timeval outTime;
   int fd;
   int fdNumber;
@@ -208,14 +225,14 @@ int main() {
       if(fdNumber < clientId)
         fdNumber = clientId;
 
-        FD_SET(clientId,&activeFD);
+      FD_SET(clientId,&activeFD);
 
-        currThread = (struct Thread *)malloc(sizeof(struct Thread));
-        bcopy((struct sockaddr*)&clientStruct,(struct sockaddr*)&currThread->client,sockLength);
-        currThread->threadId = index++;
-        currThread->clientId = clientId;
+      currThread = (struct Thread *)malloc(sizeof(struct Thread));
+      bcopy((struct sockaddr*)&clientStruct,(struct sockaddr*)&currThread->client,sockLength);
+      currThread->threadId = index++;
+      currThread->clientId = clientId;
 
-        pthread_create(&threads[index % 100], NULL, (void *)&lobby, currThread);
+      pthread_create(&threads[index % 100], NULL, (void *)&lobby, currThread);
     }
 
     // // Accept a client in blocking way.
