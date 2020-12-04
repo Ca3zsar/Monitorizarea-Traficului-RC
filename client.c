@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -31,6 +32,148 @@ void printError(char *message) {
   exit(errno);
 }
 
+int write_to_server(int socketD, char *message) {
+  int msgLength = strlen(message);
+  write(socketD, &msgLength, sizeof(int));
+
+  int written;
+  if ((written = (write(socketD, message, msgLength))) <= 0) {
+    printf("Error at writing to server through socket %d", socketD);
+    return 0;
+  }
+
+  return 1;
+}
+
+char *read_from_server(int socketD) {
+  int readLength;
+  char *message;
+
+  if (read(socketD, &readLength, sizeof(int)) <= 0) {
+    printf("Error at reading length of message from server through socket %d",
+           socketD);
+    return 0;
+  }
+
+  message = (char *)malloc(readLength + 1);
+
+  if (read(socketD, message, readLength) != readLength) {
+    printf("Error at reading message from server through socket %d", socketD);
+    return 0;
+  }
+  message[readLength] = '\0';
+  return message;
+}
+
+int registerNew(int socketD) { 
+  char *question;
+  char *answer;
+
+  char c;
+  while ((c = getchar()) != '\n' && c != EOF)
+    ;
+
+  return 1; }
+
+int login(int socketD) {
+  char *question;
+  char *answer;
+  int corect;
+
+  char c;
+  while ((c = getchar()) != '\n' && c != EOF)
+    ;
+
+  int tries = 3;
+  while (tries > 0) {
+    if (!(question = read_from_server(socketD)))
+      return 0;
+
+    printf("%s\n", question);
+
+    char username[100];
+    bzero(username, 100);
+    scanf("%s", username);
+
+    username[strlen(username)] = '\0';
+    if (!write_to_server(socketD, username))
+      return 0;
+
+    if (!(question = read_from_server(socketD)))
+      return 0;
+
+    printf("%s\n", question);
+
+    char pass[100];
+    bzero(pass, 100);
+    scanf("%s", pass);
+
+    pass[strlen(pass)] = '\0';
+
+    if (!write_to_server(socketD, pass))
+      return 0;
+
+    if (!read(socketD, &corect, sizeof(int)))
+      return 0;
+
+    if (corect) {
+      char *confirm = read_from_server(socketD);
+      printf("%s%s\n", confirm, username);
+      free(question);
+      free(confirm);
+      return 1;
+
+    } else {
+      char *confirm = read_from_server(socketD);
+      printf("%s", confirm);
+      free(confirm);
+      tries--;
+    }
+  }
+  answer = read_from_server(socketD);
+  printf("%s\n", answer);
+  free(answer);
+  free(question);
+  return 0;
+}
+
+int validate(int socketD) {
+  int msgLength;
+  int readLength;
+
+  char *question;
+
+  if (!(question = read_from_server(socketD)))
+    return 0;
+
+  printf("%s\n", question);
+
+  char answer;
+  int notOK = 1;
+  do {
+    if (read(0, &answer, sizeof(char)) <= 0)
+      printError("[Client] Can't read the answer to the login message");
+
+    if (tolower(answer) == 'l' || tolower(answer) == 'r')
+      notOK = 0;
+
+  } while (notOK);
+
+  answer = tolower(answer);
+  if (write(socketD, &answer, sizeof(char)) <= 0)
+    printError("[Client] Didn't send back the answer");
+
+  if (answer == 'l') {
+    if (!login(socketD)) {
+      return 0;
+    }
+  } else if (!registerNew(socketD)) {
+    return 0;
+  }
+
+  return 1;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 3) {
     printf("The syntax is : <server_address> <port>");
@@ -55,12 +198,17 @@ int main(int argc, char *argv[]) {
 
   char message[100];
 
+  if (!validate(socketD)) {
+    close(socketD);
+    return 0;
+  }
+
   while (1) {
     printf("[Client]Introduceti un mesaj: ");
     fflush(stdout);
 
     int msgLength;
-
+    fflush(stdin);
     if ((msgLength = read(0, message, 100)) <= 0) {
       printError("Nothing to read!");
     }
@@ -71,12 +219,8 @@ int main(int argc, char *argv[]) {
     }
 
     // First write the length of the message
-    if (write(socketD, &msgLength, sizeof(int)) < 0) {
-      printError("Error at writing");
-    }
-    if (write(socketD, message, msgLength) < 0) {
-      printError("Error at writing the message");
-    }
+    if (!write_to_server(socketD, message))
+      printError("Error at writing to server!\n");
 
     int newMsgLength;
     if (read(socketD, &newMsgLength, sizeof(int)) < 0) {
