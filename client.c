@@ -49,7 +49,7 @@ char *read_from_server(int socketD) {
   int readLength;
   char *message;
 
-  if (read(socketD, &readLength, sizeof(int)) <= 0) {
+  if (recv(socketD, &readLength, sizeof(int),MSG_NOSIGNAL) <= 0) {
     printf("Error at reading length of message from server through socket %d",
            socketD);
     return 0;
@@ -57,7 +57,7 @@ char *read_from_server(int socketD) {
 
   message = (char *)malloc(readLength + 1);
 
-  if (read(socketD, message, readLength) != readLength) {
+  if (recv(socketD, message, readLength,MSG_NOSIGNAL) != readLength) {
     printf("Error at reading message from server through socket %d", socketD);
     return 0;
   }
@@ -65,15 +65,76 @@ char *read_from_server(int socketD) {
   return message;
 }
 
-int registerNew(int socketD) { 
+int registerNew(int socketD) {
   char *question;
   char *answer;
+
+  int notRegistered = 1;
+  int corect, secondCorect;
 
   char c;
   while ((c = getchar()) != '\n' && c != EOF)
     ;
 
-  return 1; }
+  while (notRegistered) {
+    if (!(question = read_from_server(socketD)))
+      return 0;
+
+    printf("%s\n", question);
+
+    char username[100];
+    do {
+      bzero(username, 100);
+      scanf("%s", username);
+    } while (username[0] == '\n');
+
+    username[strlen(username)] = '\0';
+    if (!write_to_server(socketD, username))
+      return 0;
+
+    if (!read(socketD, &corect, sizeof(int)))
+      return 0;
+
+    if (corect) {
+      if (!(answer = read_from_server(socketD)))
+        return 0;
+
+      printf("%s\n", answer);
+
+      char pass[100];
+      do {
+        bzero(pass, 100);
+        scanf("%s", pass);
+      } while (pass[0] == '\n');
+      pass[strlen(pass)] = '\0';
+
+      if (!write_to_server(socketD, pass))
+        return 0;
+
+      if (!(answer = read_from_server(socketD)))
+        return 0;
+
+      printf("%s\n", answer);
+
+      int sub;
+      do {
+        scanf("%d", &sub);
+      } while (sub != 1 || sub != 0);
+
+      if (!write(socketD, &sub, sizeof(int)))
+        return 0;
+
+      if (!(answer = read_from_server(socketD)))
+        return 0;
+
+      printf("%s\n", answer);
+
+      return 1;
+    }
+  }
+
+  return 1;
+}
 
 int login(int socketD) {
   char *question;
@@ -167,8 +228,10 @@ int validate(int socketD) {
     if (!login(socketD)) {
       return 0;
     }
-  } else if (!registerNew(socketD)) {
-    return 0;
+  } else {
+    if (!registerNew(socketD)) {
+      return 0;
+    }
   }
 
   return 1;
