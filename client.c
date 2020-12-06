@@ -4,15 +4,21 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <time.h>
 int PORT;
 
 extern int errno;
+
+float speeds[10] = {20.1,50.2,40.1,20.3,64.2,10.5,55.3,43.2,83.2,35.7};
+static int keepRunning=1;
 
 // Initialize a server structure.
 struct sockaddr_in initialize_server(char *ip_address) {
@@ -119,8 +125,8 @@ int registerNew(int socketD) {
       int sub;
       do {
         scanf("%d", &sub);
-      } while (sub != 1 || sub != 0);
-
+        printf("%d\n",sub);
+      } while (sub != 1 && sub != 0);
       if (!write(socketD, &sub, sizeof(int)))
         return 0;
 
@@ -130,6 +136,11 @@ int registerNew(int socketD) {
       printf("%s\n", answer);
 
       return 1;
+    }else{
+      if(!(answer=read_from_server(socketD)))
+        return 0;
+      
+      printf("%s\n",answer);
     }
   }
 
@@ -237,6 +248,90 @@ int validate(int socketD) {
   return 1;
 }
 
+void stopHandler()
+{
+  keepRunning=0;
+  printf("SIGINT sent. Closing client..\n");
+  fflush(stdout);
+}
+
+void write_speed(int *socketD)
+{
+  printf("[Client] Entering speed thread\n");
+  pthread_detach(pthread_self());
+
+
+  int update_time = 5;
+  int type=1;
+  int index=0;
+  while(keepRunning)
+  {
+    signal(SIGINT, stopHandler);
+    if(!keepRunning)break;
+    sleep(update_time);
+    //signal what type of input it will be
+    if(!write(*socketD,&type,sizeof(int))){
+      printf("[Client]Error at writing the type.\n");
+      break;
+    }
+    if(!write(*socketD,&speeds[index],sizeof(float)))
+    {
+      printf("[Client]Error at writing the speed.\n");
+      break;
+    }
+
+    printf("[Client] Your speed is : %0.2f\n",speeds[index]);
+    fflush(stdout);
+
+    index = (index+1)%10;
+  }
+
+  pthread_exit(NULL);
+}
+
+void write_alert(int *socketD)
+{
+  printf("[Client] Entering alert thread\n");
+  fflush(stdout);
+  pthread_detach(pthread_self());
+
+  int type = 2;
+
+  while(keepRunning)
+  {
+    signal(SIGINT, stopHandler);
+    if(!keepRunning)break;
+    printf("[Client] Write here any accident that happened: ");
+    fflush(stdout);
+
+    char location[100];
+    bzero(location,100);
+
+    read(0,location,100);
+    int length = strlen(location);
+    location[length-1]='\0';
+
+    if(!write(*socketD,&type,sizeof(int)))
+      printf("[Client]Error at writing the type of message\n");
+      fflush(stdout);
+    if(!write_to_server(*socketD, location))
+    {
+      printf("[Client]Error at sending the alert to server\n");
+      fflush(stdout);
+    }  
+  }
+
+  pthread_exit(NULL);
+}
+
+void read_news(int *socketD)
+{
+  printf("[Client] Entering news thread\n");
+  pthread_detach(pthread_self());
+
+  pthread_exit(NULL);
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 3) {
     printf("The syntax is : <server_address> <port>");
@@ -266,30 +361,23 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  while (1) {
-    printf("[Client]Introduceti un mesaj: ");
-    fflush(stdout);
+  int *socketCopy = &socketD;
 
-    int msgLength;
-    fflush(stdin);
-    if ((msgLength = read(0, message, 100)) <= 0) {
-      printError("Nothing to read!");
-    }
-    message[msgLength - 1] = '\0';
-    if (strcmp(message, "quit") == 0) {
-      printf("Quit message was read\n");
-      break;
-    }
+  // Open a thread for writing the speeds.
+  pthread_t speedThread;
+  pthread_create(&speedThread,NULL, (void*)&write_speed, (void*)socketCopy);
 
-    // First write the length of the message
-    if (!write_to_server(socketD, message))
-      printError("Error at writing to server!\n");
+  pthread_t newsThread;
+  pthread_create(&newsThread,NULL,(void*)&read_news,(void*)socketCopy);
 
-    int newMsgLength;
-    if (read(socketD, &newMsgLength, sizeof(int)) < 0) {
-      printf("Error at reading from server");
-    }
-    printf("The length of your message is: %d \n", newMsgLength);
+  pthread_t alertThread;
+  pthread_create(&alertThread,NULL,(void*)&write_alert,(void*)socketCopy);
+
+  int update_time = 5;
+  int type=1;
+  int index=0;
+  while(keepRunning)
+  {
   }
   close(socketD);
 }

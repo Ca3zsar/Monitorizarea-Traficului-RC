@@ -24,6 +24,7 @@ extern int errno;
 static fd_set activeFD;
 static fd_set readFD;
 static fd_set writeFD;
+static int closed[100] = {[0 ... 99] = 1};
 
 sqlite3 *db;
 
@@ -38,7 +39,7 @@ struct clientInfo {
   char subscribed;
   float actualSpeed;
   float coordinates[2];
-}clients[100];
+} clients[100];
 
 // Struct to describe information from the traffic
 struct trafficInfo {
@@ -64,7 +65,7 @@ struct args {
   int socketD;
   int clientId;
   int threadId;
-  int logged;
+  int active;
   pthread_t thread;
   struct sockaddr_in clientStruct;
   struct clientInfo client;
@@ -108,7 +109,7 @@ char *read_from_client(int threadId, int socketD) {
 
   if ((status = read(socketD, message, readLength)) != readLength) {
     if (status == 0)
-      printf("[Thread %d]Client %d disconnected\n.", threadId, socketD);
+      printf("[Thread %d]Client %d disconnected.\n", threadId, socketD);
     else
       printf("[Thread %d] Error at reading message from client %d", threadId,
              socketD);
@@ -142,17 +143,15 @@ void initialize_db() {
   }
 }
 
-void append_client(int clientId,struct clientInfo newClient)
-{
-  clients[clientId].username = (char*)malloc(strlen(newClient.username));
-  sprintf(clients[clientId].username,"%s",newClient.username);
+void append_client(int clientId, struct clientInfo newClient) {
+  clients[clientId].username = (char *)malloc(strlen(newClient.username));
+  sprintf(clients[clientId].username, "%s", newClient.username);
 
   clients[clientId].subscribed = newClient.subscribed;
-} 
+}
 
-void delete_client(int clientId)
-{
-  bzero(&clients[clientId],sizeof(struct clientInfo));
+void delete_client(int clientId) {
+  bzero(&clients[clientId], sizeof(struct clientInfo));
 }
 
 int correct_user(char *username, char *password, struct clientInfo *client) {
@@ -206,7 +205,26 @@ int is_in_database(char *username) {
   return 0;
 }
 
-int add_to_db(char *username, char *password, int subscribed) { return 1; }
+int add_to_db(char *username, char *password, int subscribed) {
+  char sql[100];
+  char *err_msg = 0;
+  int status;
+
+  sprintf(sql, "INSERT INTO Users VALUES('%s' , '%s', '%d');", username,
+          password, subscribed);
+
+  status = sqlite3_exec(db, sql, 0, 0, &err_msg);
+
+  if (status != SQLITE_OK) {
+
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+
+    sqlite3_free(err_msg);
+    return 0;
+  }
+
+  return 1;
+}
 
 void set_socket(int *socketD) {
   if ((*socketD = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -241,7 +259,7 @@ static int login(struct args *arg) {
       return 0;
 
     if (correct_user(username, userPass, &arg->client)) {
-      append_client(arg->clientId,arg->client);
+      append_client(arg->clientId, arg->client);
 
       corect = 1;
       write(arg->clientId, &corect,
@@ -262,8 +280,6 @@ static int login(struct args *arg) {
 }
 
 static int registerNew(struct args *arg) {
-  printf("HERE");
-  fflush(stdout);
   char *question = "Enter your username: ";
   char *askPass = "Enter your password: ";
   char *askSub = "Do you want to subscribe? (0/1)";
@@ -271,8 +287,7 @@ static int registerNew(struct args *arg) {
 
   int notRegistered = 1;
   while (notRegistered) {
-    printf("HIHI");
-    if (!write_to_client(arg->threadId, arg->socketD, question))
+    if (!write_to_client(arg->threadId, arg->clientId, question))
       return 0;
 
     char *username;
@@ -281,18 +296,19 @@ static int registerNew(struct args *arg) {
       return 0;
 
     if (!is_in_database(username)) {
+      fflush(stdout);
       int corect = 1;
-      if (!write(arg->socketD, &corect, sizeof(int)))
+      if (!write(arg->clientId, &corect, sizeof(int)))
         return 0;
 
-      if (!write_to_client(arg->threadId, arg->socketD, askPass))
+      if (!write_to_client(arg->threadId, arg->clientId, askPass))
         return 0;
 
       char *password;
       if (!(password = read_from_client(arg->threadId, arg->clientId)))
         return 0;
 
-      if (!write_to_client(arg->threadId, arg->socketD, askSub))
+      if (!write_to_client(arg->threadId, arg->clientId, askSub))
         return 0;
 
       int sub;
@@ -304,7 +320,7 @@ static int registerNew(struct args *arg) {
 
       char *success = "Successfully registered, ";
 
-      if (!write_to_client(arg->threadId, arg->socketD, success))
+      if (!write_to_client(arg->threadId, arg->clientId, success))
         return 0;
 
       printf("[Thread %d]Successfully added new user to database.\n",
@@ -314,11 +330,11 @@ static int registerNew(struct args *arg) {
       return 1;
     } else {
       int corect = 0;
-      if (!write(arg->socketD, &corect, sizeof(int)))
+      if (!write(arg->clientId, &corect, sizeof(int)))
         return 0;
 
       char *failed = "Username already existent!\n";
-      if (!write_to_client(arg->threadId, arg->socketD, failed))
+      if (!write_to_client(arg->threadId, arg->clientId, failed))
         return 0;
     }
   }
@@ -405,6 +421,8 @@ static void lobby(struct args *arg) {
 
   int answer = interact(arg);
   if (!answer) {
+    delete_client(arg->clientId);
+    closed[arg->clientId] = 1;
     close(arg->clientId);
     FD_CLR(arg->clientId, &activeFD);
     pthread_exit(NULL);
@@ -420,14 +438,13 @@ void stopHandler() {
   keepRunning = 0;
 }
 
-void handler(int s) { printf("Caught SIGPIPE\n"); }
-
 void add_new_client(struct args *arg) {
   pthread_detach(pthread_self());
   bzero(&arg->clientStruct, sockLength);
   arg->clientId =
       accept(arg->socketD, (struct sockaddr *)&arg->clientStruct, &sockLength);
-
+  
+  closed[arg->clientId]=0;
   printf("[Thread %d] Authenticating client %d\n", arg->threadId,
          arg->clientId);
   fflush(stdout);
@@ -436,11 +453,13 @@ void add_new_client(struct args *arg) {
   fcntl(arg->clientId, F_SETFL, opts & O_NONBLOCK & ~O_NONBLOCK);
 
   if (arg->clientId < 0) {
+    closed[arg->clientId] = 1;
     perror("[Server] Error at accepting client\n");
     return;
   }
 
   if (!validate(arg)) {
+    closed[arg->clientId] = 1;
     close(arg->clientId);
     return;
   }
@@ -454,6 +473,53 @@ void add_new_client(struct args *arg) {
   FD_SET(arg->clientId, &writeFD);
   pthread_mutex_unlock(&mlock);
 
+  pthread_exit(NULL);
+}
+
+static void read_ready(struct args *arg)
+{
+  pthread_detach(pthread_self());
+
+  printf("[Thread %d]Ready to read input from Client %d \n",arg->threadId,arg->clientId);
+  fflush(stdout);
+  int bytes;
+  
+  //Read the type of the input.
+  int type;
+  if((bytes=read(arg->clientId,&type,sizeof(int))) <= 0){
+    closed[arg->clientId] = 1;
+    if(bytes==0){printf("Client %d disconnected.\n",arg->clientId);}
+    else printf("[Thread %d]Error at reading the type of input.\n",arg->threadId);
+    pthread_exit(NULL);
+  }
+  fflush(stdout);
+  if(type==1)//Speed input
+  {
+    float speed;
+    if((bytes = read(arg->clientId,&speed,sizeof(int))) <= 0)
+    {
+      if(bytes==0){printf("Client %d disconnected.\n",arg->clientId);}
+      else printf("[Thread %d]Error at reading the speed from client.\n",arg->threadId);
+      pthread_exit(NULL);
+    }
+    arg->client.actualSpeed = speed;
+    printf("[Thread %d]Speed of Client %d is %0.2f\n",arg->threadId,arg->clientId,speed);
+    fflush(stdout);
+  }
+  else{
+    if(type==2)//Alert input
+    {
+      char *alert;
+      if(!(alert=(read_from_client(arg->threadId, arg->clientId))))
+      {
+        printf("[Thread %d]Error at reading the alert from client. \n",arg->threadId);
+        pthread_exit(NULL);
+      }
+      printf("[Thread %d]%s\n",arg->threadId,alert);
+      fflush(stdout);
+    }
+  }
+  FD_SET(arg->clientId, &activeFD);
   pthread_exit(NULL);
 }
 
@@ -497,42 +563,48 @@ int main() {
   while (keepRunning) {
     // See if the server was closed
     signal(SIGINT, stopHandler);
-    signal(SIGPIPE, handler);
     if (!keepRunning)
       break;
 
     int clientId;
     FD_ZERO(&readFD);
     FD_ZERO(&writeFD);
-    bcopy((char *)&activeFD, (char *)&readFD, sizeof(readFD));
-    bcopy((char *)&activeFD, (char *)&writeFD, sizeof(writeFD));
+    bcopy((char *)&activeFD, (char *)&readFD, sizeof(activeFD));
+    bcopy((char *)&activeFD, (char *)&writeFD, sizeof(activeFD));
+
+    int nr;
 
     if (select(fdNumber + 1, &readFD, &writeFD, NULL, &outTime) < 0)
       printError("[Server] Error at select()\n");
+    
 
     if (FD_ISSET(socketD, &readFD)) {
       bzero((struct args *)&arg[index], sizeof(struct args));
       arg[index % 100].socketD = socketD;
       arg[index % 100].threadId = index % 100;
-      pthread_create(&arg[index % 100].thread, NULL,
-                     (void *)&add_new_client, &arg[index % 100]);
+      pthread_create(&arg[index % 100].thread, NULL, (void *)&add_new_client,
+                     &arg[index % 100]);
       index++;
     }
 
     for (fd = 4; fd <= fdNumber; fd++) /* parcurgem multimea de descriptori */
     {
-      // printf("%d - ",fd);
-      if (fd != socketD && (FD_ISSET(fd, &readFD) || FD_ISSET(fd, &writeFD))) {
-        printf("%d\n", fd);
-        arg[index].threadId = index;
-        arg[index].clientId = fd;
-        bcopy(&clients[fd],&arg[index].clientStruct,sizeof(struct clientInfo));
-        // arg[index].clientStruct = clients[fd];
-        index++;
-        pthread_create(&arg[(index - 1) % 100].thread, NULL, (void *)&lobby,
-                       &arg[(index - 1) % 100]);
-        FD_CLR(fd, &activeFD);
-      }
+      if (fd != socketD && (FD_ISSET(fd,&readFD))) {
+          arg[index].threadId = index;
+          arg[index].clientId = fd;
+          arg[index].active = 1;
+          index++;
+          pthread_create(&arg[(index - 1) % 100].thread, NULL, (void *)&read_ready,
+                         &arg[(index - 1) % 100]);
+          FD_CLR(fd, &activeFD);
+        }
+    }
+  }
+  sqlite3_close(db);
+  for (fd = 4; fd <= fdNumber; fd++) {
+    if (closed[fd] == 0) {
+      shutdown(fd, SHUT_RD);
+      close(fd);
     }
   }
   close(socketD);
