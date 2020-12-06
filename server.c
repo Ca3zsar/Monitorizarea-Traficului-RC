@@ -31,21 +31,22 @@ sqlite3 *db;
 pthread_mutex_t mlock = PTHREAD_MUTEX_INITIALIZER;
 
 static int volatile fdNumber;
-int keepRunning = 1;
+static int keepRunning = 1;
+static int volatile waitFor = 0;
 
 // Struct to describe client.
 struct clientInfo {
   char *username;
   char subscribed;
   float actualSpeed;
-  float coordinates[2];
+  // float coordinates[2];
 } clients[100];
 
 // Struct to describe information from the traffic
-struct trafficInfo {
-  float speedLimit;
-  float coordinates[2];
-};
+// struct trafficInfo {
+//   float speedLimit;
+//   float coordinates[2];
+// };
 
 // Struct to describe an accident
 struct trafficEvents {
@@ -144,7 +145,7 @@ void initialize_db() {
 }
 
 void append_client(int clientId, struct clientInfo newClient) {
-  clients[clientId].username = (char *)malloc(strlen(newClient.username));
+  clients[clientId].username = (char *)malloc(strlen(newClient.username) + 1);
   sprintf(clients[clientId].username, "%s", newClient.username);
 
   clients[clientId].subscribed = newClient.subscribed;
@@ -276,6 +277,8 @@ static int login(struct args *arg) {
     }
   }
   write_to_client(arg->threadId, arg->clientId, "Number of tries exceeded\n");
+  printf("[Thread %d]Client %d disconnected.\n", arg->threadId, arg->clientId);
+  fflush(stdout);
   return 0;
 }
 
@@ -383,9 +386,11 @@ int validate(struct args *arg) {
   return 1;
 }
 
-void stopHandler() {
-  printf("Closing the server now...\n");
-  keepRunning = 0;
+void send_client_data(struct args *arg) {
+  // write the username
+  write_to_client(arg->threadId, arg->clientId,
+                  clients[arg->clientId].username);
+  write(arg->clientId, &clients[arg->clientId].subscribed, sizeof(int));
 }
 
 void add_new_client(struct args *arg) {
@@ -393,7 +398,7 @@ void add_new_client(struct args *arg) {
   bzero(&arg->clientStruct, sockLength);
   arg->clientId =
       accept(arg->socketD, (struct sockaddr *)&arg->clientStruct, &sockLength);
-  
+
   printf("[Thread %d] Authenticating client %d\n", arg->threadId,
          arg->clientId);
   fflush(stdout);
@@ -403,12 +408,14 @@ void add_new_client(struct args *arg) {
 
   if (arg->clientId < 0) {
     closed[arg->clientId] = 1;
+    arg->active = 0;
     perror("[Server] Error at accepting client\n");
     return;
   }
 
   if (!validate(arg)) {
     closed[arg->clientId] = 1;
+    arg->active = 0;
     close(arg->clientId);
     return;
   }
@@ -417,98 +424,130 @@ void add_new_client(struct args *arg) {
   if (fdNumber < arg->clientId)
     fdNumber = arg->clientId;
 
-  FD_SET(arg->clientId, &activeFD);
-  FD_SET(arg->clientId, &readFD);
-  FD_SET(arg->clientId, &writeFD);
-  pthread_mutex_unlock(&mlock);
+  send_client_data(arg);
 
+  FD_SET(arg->clientId, &activeFD);
+  pthread_mutex_unlock(&mlock);
+  arg->active = 0;
   pthread_exit(NULL);
 }
 
-static int announce_all(struct args *arg, char *alert)
-{
-  //Announce all clients.
-  int type = 2; //Type 2 is for alerts.
-  for(int fd = 4;fd<=fdNumber;fd++)
-  {
-    if(!closed[fd] && FD_ISSET(fd,&writeFD) && fd != arg->clientId)
-    {
-      if(!write(fd,&type,sizeof(int)))
-      {
-        printf("[Thread %d]Failed to send alert type to client %d",arg->threadId,fd);
+static int announce_all(struct args *arg, char *alert) {
+  // Announce all clients.
+  int type = 2; // Type 2 is for alerts.
+  for (int fd = 4; fd <= fdNumber; fd++) {
+    if (!closed[fd] && FD_ISSET(fd, &writeFD) && fd != arg->clientId) {
+      pthread_mutex_lock(&mlock);
+      waitFor = 1;
+      if (!write(fd, &type, sizeof(int))) {
+        printf("[Thread %d]Failed to send alert type to client %d",
+               arg->threadId, fd);
+        pthread_mutex_unlock(&mlock);
+        waitFor = 0;
         return 0;
       }
-      if(!write_to_client(arg->threadId, fd, alert))
-      {
-        printf("[Thread %d]Failed to send alert to client %d",arg->threadId,fd);
+      if (!write_to_client(arg->threadId, fd, alert)) {
+        printf("[Thread %d]Failed to send alert to client %d", arg->threadId,
+               fd);
+        pthread_mutex_unlock(&mlock);
+        waitFor = 0;
         return 0;
       }
+      waitFor = 0;
+      pthread_mutex_unlock(&mlock);
     }
   }
   return 1;
 }
 
-static void read_ready(struct args *arg)
-{
+static void read_ready(struct args *arg) {
   pthread_detach(pthread_self());
 
-  printf("[Thread %d]Ready to read input from Client %d \n",arg->threadId,arg->clientId);
+  printf("[Thread %d]Ready to read input from Client %d \n", arg->threadId,
+         arg->clientId);
   fflush(stdout);
   int bytes;
-  
-  //Read the type of the input.
+
+  // Read the type of the input.
   int type;
-  if((bytes=read(arg->clientId,&type,sizeof(int))) <= 0){
+  if ((bytes = read(arg->clientId, &type, sizeof(int))) <= 0) {
     closed[arg->clientId] = 1;
-    if(bytes==0){printf("Client %d disconnected.\n",arg->clientId);}
-    else printf("[Thread %d]Error at reading the type of input.\n",arg->threadId);
+    arg->active = 0;
+    if (bytes == 0) {
+      printf("Client %d disconnected.\n", arg->clientId);
+    } else
+      printf("[Thread %d]Error at reading the type of input.\n", arg->threadId);
+    close(arg->clientId);
     pthread_exit(NULL);
   }
   fflush(stdout);
-  if(type==1)//Speed input
+  if (type == 1) // Speed input
   {
-
     float speed;
-    if((bytes = read(arg->clientId,&speed,sizeof(int))) <= 0)
-    {
+    if ((bytes = read(arg->clientId, &speed, sizeof(int))) <= 0) {
       closed[arg->clientId] = 1;
-      if(bytes==0){printf("Client %d disconnected.\n",arg->clientId);}
-      else printf("[Thread %d]Error at reading the speed from client.\n",arg->threadId);
+      arg->active = 0;
+      if (bytes == 0) {
+        printf("Client %d disconnected.\n", arg->clientId);
+      } else
+        printf("[Thread %d]Error at reading the speed from client.\n",
+               arg->threadId);
+      close(arg->clientId);
       pthread_exit(NULL);
     }
     clients[arg->clientId].actualSpeed = speed;
-
-    write(arg->clientId, &type,sizeof(int));
-    if(speed > 40)
-      write_to_client(arg->threadId, arg->clientId, "The speed limit is 40, slow down.");
+    while (waitFor)
+      ;
+    write(arg->clientId, &type, sizeof(int));
+    if (speed > 40)
+      write_to_client(arg->threadId, arg->clientId,
+                      "The speed limit is 40, slow down.");
     else {
-      write_to_client(arg->thread,arg->clientId,"The speed limit is 40, your speed is less.");
+      write_to_client(arg->thread, arg->clientId,
+                      "The speed limit is 40, your speed is less.");
     }
 
-    printf("[Thread %d]Speed of Client %d is %0.2f\n",arg->threadId,arg->clientId,speed);
+    printf("[Thread %d]Speed of Client %d is %0.2f\n", arg->threadId,
+           arg->clientId, speed);
     fflush(stdout);
   }
-  else{
-    if(type==2)//Alert input
-    {
-      char *alert;
-      if(!(alert=(read_from_client(arg->threadId, arg->clientId))))
-      {
-        printf("[Thread %d]Error at reading the alert from client. \n",arg->threadId);
-        pthread_exit(NULL);
-      }
-      printf("[Thread %d]Client %d : %s\n",arg->threadId,arg->clientId,alert);
-      fflush(stdout);
-
-      if(!announce_all(arg,alert)){
-        printf("[Thread %d] Failed to send message to all clients.\n",arg->threadId);
-        pthread_exit(NULL);
-      }
-
+  if (type == 2) // Alert input
+  {
+    char *alert;
+    if (!(alert = (read_from_client(arg->threadId, arg->clientId)))) {
+      arg->active = 0;
+      printf("[Thread %d]Error at reading the alert from client. \n",
+             arg->threadId);
+      pthread_exit(NULL);
+    }
+    printf("[Thread %d]Client %d : %s\n", arg->threadId, arg->clientId, alert);
+    fflush(stdout);
+    if (!announce_all(arg, alert)) {
+      arg->active = 0;
+      printf("[Thread %d] Failed to send message to all clients.\n",
+             arg->threadId);
+      pthread_exit(NULL);
     }
   }
+  if (type == 3) // Subscribtion input
+  {
+    char *news = "STIRI DE TEST";
+    write(arg->clientId, &type, sizeof(int));
+    if (!write_to_client(arg->threadId, arg->clientId, news)) {
+      arg->active = 0;
+      printf("[Thread %d] Failed to send newsletter.\n",
+             arg->threadId);
+      pthread_exit(NULL);
+    }
+  }
+  arg->active = 0;
   FD_SET(arg->clientId, &activeFD);
   pthread_exit(NULL);
+}
+
+void stopHandler() {
+  printf("Closing the server now...\n");
+  keepRunning = 0;
 }
 
 int main() {
@@ -539,7 +578,7 @@ int main() {
   FD_ZERO(&writeFD);
   FD_SET(socketD, &activeFD);
 
-  outTime.tv_sec = 1;
+  outTime.tv_sec = 30;
   outTime.tv_usec = 0;
 
   fdNumber = socketD;
@@ -560,32 +599,34 @@ int main() {
     bcopy((char *)&activeFD, (char *)&readFD, sizeof(activeFD));
     bcopy((char *)&activeFD, (char *)&writeFD, sizeof(activeFD));
 
-    int nr;
+    outTime.tv_sec = 2;
 
-    if (select(fdNumber + 1, &readFD, &writeFD, NULL, &outTime) < 0)
-      printError("[Server] Error at select()\n");
-    
+    select(fdNumber + 1, &readFD, &writeFD, NULL, &outTime);
 
     if (FD_ISSET(socketD, &readFD)) {
       bzero((struct args *)&arg[index], sizeof(struct args));
       arg[index % 100].socketD = socketD;
       arg[index % 100].threadId = index % 100;
+      arg[index % 100].active = 1;
       pthread_create(&arg[index % 100].thread, NULL, (void *)&add_new_client,
                      &arg[index % 100]);
-      index++;
+      index = (index + 1) % 100;
     }
 
     for (fd = 4; fd <= fdNumber; fd++) /* parcurgem multimea de descriptori */
     {
-      if (fd != socketD && (FD_ISSET(fd,&readFD))) {
-          arg[index].threadId = index;
-          arg[index].clientId = fd;
-          arg[index].active = 1;
-          index++;
-          pthread_create(&arg[(index - 1) % 100].thread, NULL, (void *)&read_ready,
-                         &arg[(index - 1) % 100]);
-          FD_CLR(fd, &activeFD);
+      if (fd != socketD && (FD_ISSET(fd, &readFD))) {
+        while (arg[index % 100].active) {
+          index = (index + 1) % 100;
         }
+        arg[index].threadId = index;
+        arg[index].clientId = fd;
+        arg[index].active = 1;
+        pthread_create(&arg[(index)].thread, NULL, (void *)&read_ready,
+                       &arg[(index)]);
+        index = (index + 1) % 100;
+        FD_CLR(fd, &activeFD);
+      }
     }
   }
   sqlite3_close(db);

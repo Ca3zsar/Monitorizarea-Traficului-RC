@@ -20,6 +20,11 @@ extern int errno;
 float speeds[10] = {20.1, 50.2, 40.1, 20.3, 64.2, 10.5, 55.3, 43.2, 83.2, 35.7};
 static int keepRunning = 1;
 
+struct info{
+  char *username;
+  int subscribed;
+}clientInfo;
+
 // Initialize a server structure.
 struct sockaddr_in initialize_server(char *ip_address) {
   struct sockaddr_in server;
@@ -69,6 +74,12 @@ char *read_from_server(int socketD) {
   }
   message[readLength] = '\0';
   return message;
+}
+
+void receive_client_data(int socketD)
+{
+  clientInfo.username = read_from_server(socketD);
+  read(socketD,&clientInfo.subscribed,sizeof(int));
 }
 
 int registerNew(int socketD) {
@@ -245,6 +256,8 @@ int validate(int socketD) {
     }
   }
 
+  receive_client_data(socketD);
+
   return 1;
 }
 
@@ -277,9 +290,6 @@ void write_speed(int *socketD) {
       printf("[Client]Error at writing the speed.\n");
       break;
     }
-
-    // printf("[Client] Your speed is : %0.2f\n",speeds[index]);
-    // fflush(stdout);
 
     index = (index + 1) % 10;
   }
@@ -349,6 +359,35 @@ void read_news(int *socketD) {
       }
       printf("%s\n", alert);
     }
+    if(type==3)
+    {
+      char *news;
+      if(!(news=read_from_server(*socketD)))
+      {
+        printf("[Client]Error at readin the news from server.\n");
+        break;
+      }
+      printf("%s\n",news);
+    }
+  }
+
+  pthread_exit(NULL);
+}
+
+void ask_for_news(int *socketD)
+{
+  pthread_detach(pthread_self());
+
+  int type = 3;
+
+  while (keepRunning) {
+    signal(SIGINT, stopHandler);
+    if (!keepRunning)
+      break;
+
+    sleep(30);
+
+    write(*socketD,&type,sizeof(int));
   }
 
   pthread_exit(NULL);
@@ -389,16 +428,22 @@ int main(int argc, char *argv[]) {
   pthread_t speedThread;
   pthread_create(&speedThread, NULL, (void *)&write_speed, (void *)socketCopy);
 
-  pthread_t newsThread;
-  pthread_create(&newsThread, NULL, (void *)&read_news, (void *)socketCopy);
+  pthread_t readThread;
+  pthread_create(&readThread, NULL, (void *)&read_news, (void *)socketCopy);
 
   pthread_t alertThread;
   pthread_create(&alertThread, NULL, (void *)&write_alert, (void *)socketCopy);
 
+  if(clientInfo.subscribed)
+  {
+    pthread_t newsThread;
+    pthread_create(&newsThread,NULL,(void*)&ask_for_news,(void*)socketCopy);
+  }
+
   int update_time = 5;
   int type = 1;
   int index = 0;
-  while (keepRunning) {
+  while (keepRunning) { //Keep the main thread open.
   }
   close(socketD);
 }
