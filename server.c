@@ -342,36 +342,6 @@ static int registerNew(struct args *arg) {
   return 1;
 }
 
-int interact(struct args *arg) {
-  int msgLength;
-  int numberRead;
-  if ((numberRead = read(arg->clientId, &msgLength, sizeof(int))) <= 0) {
-    if (numberRead < 0)
-      perror("Read() error in thread");
-    else
-      printf("Client %d disconnected \n", arg->clientId);
-    return 0;
-  }
-
-  char *message;
-  message = (char *)malloc(msgLength + 1);
-
-  if (read(arg->clientId, message, msgLength) < 0) {
-    perror("Error at reading of the message in thread");
-    return 0;
-  }
-  message[msgLength] = '\0';
-  if (message[0] == '\n')
-    return 1;
-
-  int newLength = strlen(message);
-  if (write(arg->clientId, &newLength, sizeof(int)) <= 0)
-    perror("Error at write in thread");
-
-  printf("Sent back to the client: %d\n", newLength);
-  return 1;
-}
-
 int validate(struct args *arg) {
   char *question = "Do you want to log in or register? [L/R]";
 
@@ -413,26 +383,6 @@ int validate(struct args *arg) {
   return 1;
 }
 
-static void lobby(struct args *arg) {
-  pthread_detach(pthread_self());
-
-  printf("[Thread %d]Serving Client %d \n", arg->threadId, arg->clientId);
-  fflush(stdout);
-
-  int answer = interact(arg);
-  if (!answer) {
-    delete_client(arg->clientId);
-    closed[arg->clientId] = 1;
-    close(arg->clientId);
-    FD_CLR(arg->clientId, &activeFD);
-    pthread_exit(NULL);
-  }
-
-  FD_SET(arg->clientId, &activeFD);
-  // close(arg->clientId);
-  pthread_exit(NULL);
-}
-
 void stopHandler() {
   printf("Closing the server now...\n");
   keepRunning = 0;
@@ -444,7 +394,6 @@ void add_new_client(struct args *arg) {
   arg->clientId =
       accept(arg->socketD, (struct sockaddr *)&arg->clientStruct, &sockLength);
   
-  closed[arg->clientId]=0;
   printf("[Thread %d] Authenticating client %d\n", arg->threadId,
          arg->clientId);
   fflush(stdout);
@@ -463,7 +412,7 @@ void add_new_client(struct args *arg) {
     close(arg->clientId);
     return;
   }
-
+  closed[arg->clientId] = 0;
   pthread_mutex_lock(&mlock);
   if (fdNumber < arg->clientId)
     fdNumber = arg->clientId;
@@ -474,6 +423,29 @@ void add_new_client(struct args *arg) {
   pthread_mutex_unlock(&mlock);
 
   pthread_exit(NULL);
+}
+
+static int announce_all(struct args *arg, char *alert)
+{
+  //Announce all clients.
+  int type = 2; //Type 2 is for alerts.
+  for(int fd = 4;fd<=fdNumber;fd++)
+  {
+    if(!closed[fd] && FD_ISSET(fd,&writeFD) && fd != arg->clientId)
+    {
+      if(!write(fd,&type,sizeof(int)))
+      {
+        printf("[Thread %d]Failed to send alert type to client %d",arg->threadId,fd);
+        return 0;
+      }
+      if(!write_to_client(arg->threadId, fd, alert))
+      {
+        printf("[Thread %d]Failed to send alert to client %d",arg->threadId,fd);
+        return 0;
+      }
+    }
+  }
+  return 1;
 }
 
 static void read_ready(struct args *arg)
@@ -495,14 +467,24 @@ static void read_ready(struct args *arg)
   fflush(stdout);
   if(type==1)//Speed input
   {
+
     float speed;
     if((bytes = read(arg->clientId,&speed,sizeof(int))) <= 0)
     {
+      closed[arg->clientId] = 1;
       if(bytes==0){printf("Client %d disconnected.\n",arg->clientId);}
       else printf("[Thread %d]Error at reading the speed from client.\n",arg->threadId);
       pthread_exit(NULL);
     }
-    arg->client.actualSpeed = speed;
+    clients[arg->clientId].actualSpeed = speed;
+
+    write(arg->clientId, &type,sizeof(int));
+    if(speed > 40)
+      write_to_client(arg->threadId, arg->clientId, "The speed limit is 40, slow down.");
+    else {
+      write_to_client(arg->thread,arg->clientId,"The speed limit is 40, your speed is less.");
+    }
+
     printf("[Thread %d]Speed of Client %d is %0.2f\n",arg->threadId,arg->clientId,speed);
     fflush(stdout);
   }
@@ -515,8 +497,14 @@ static void read_ready(struct args *arg)
         printf("[Thread %d]Error at reading the alert from client. \n",arg->threadId);
         pthread_exit(NULL);
       }
-      printf("[Thread %d]%s\n",arg->threadId,alert);
+      printf("[Thread %d]Client %d : %s\n",arg->threadId,arg->clientId,alert);
       fflush(stdout);
+
+      if(!announce_all(arg,alert)){
+        printf("[Thread %d] Failed to send message to all clients.\n",arg->threadId);
+        pthread_exit(NULL);
+      }
+
     }
   }
   FD_SET(arg->clientId, &activeFD);
