@@ -85,14 +85,13 @@ struct sockaddr_in initialize_server() {
   return server;
 }
 
-void close_thread(struct args *arg,int bytes) {
+void close_thread(struct args *arg, int bytes) {
   closed[arg->clientId] = 1;
   arg->active = 0;
   if (bytes == 0) {
     printf("Client %d disconnected.\n", arg->clientId);
   } else
-    printf("[Thread %d]Error at reading from client.\n",
-           arg->threadId);
+    printf("[Thread %d]Error at reading from client.\n", arg->threadId);
   close(arg->clientId);
   pthread_exit(NULL);
 }
@@ -215,7 +214,6 @@ void send_client_data(struct args *arg) {
                   clients[arg->clientId].username);
   write(arg->clientId, &clients[arg->clientId].subscribed, sizeof(int));
 }
-
 
 void append_client(int clientId, struct clientInfo newClient) {
   clients[clientId].username = (char *)malloc(strlen(newClient.username) + 1);
@@ -349,6 +347,11 @@ int registerNew(struct args *arg) {
       printf("[Thread %d]Successfully added new user to database.\n",
              arg->threadId);
       fflush(stdout);
+
+      arg->client.username = (char *)malloc(strlen(username) + 1);
+      sprintf(arg->client.username, "%s", username);
+      arg->client.subscribed = sub;
+      append_client(arg->clientId, arg->client);
 
       return 1;
     } else {
@@ -508,8 +511,9 @@ void speed_operations(struct args *arg) {
   float coordX = clients[arg->clientId].coordinates[0];
   float coordY = clients[arg->clientId].coordinates[1];
 
-  printf("[Thread %d]The location of the client %d is : %0.5f , %0.5f . The speed of Client %d is %0.2f\n",
-        arg->threadId,arg->clientId,coordX,coordY, arg->clientId,speed);
+  printf("[Thread %d]The location of the client %d is : %0.5f , %0.5f . The "
+         "speed of Client %d is %0.2f\n",
+         arg->threadId, arg->clientId, coordX, coordY, arg->clientId, speed);
   fflush(stdout);
 }
 
