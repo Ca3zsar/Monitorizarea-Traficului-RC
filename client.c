@@ -18,12 +18,14 @@ int PORT;
 extern int errno;
 
 float speeds[10] = {20.1, 50.2, 40.1, 20.3, 64.2, 10.5, 55.3, 43.2, 83.2, 35.7};
+float coordX[5] = {47.158857, 47.160379, 47.164124, 47.166358, 47.166092};
+float coordY[5] = {27.58542, 27.586676, 27.581175, 27.577495, 27.570962};
 static int keepRunning = 1;
 
-struct info{
+struct info {
   char *username;
   int subscribed;
-}clientInfo;
+} clientInfo;
 
 // Initialize a server structure.
 struct sockaddr_in initialize_server(char *ip_address) {
@@ -76,10 +78,9 @@ char *read_from_server(int socketD) {
   return message;
 }
 
-void receive_client_data(int socketD)
-{
+void receive_client_data(int socketD) {
   clientInfo.username = read_from_server(socketD);
-  read(socketD,&clientInfo.subscribed,sizeof(int));
+  read(socketD, &clientInfo.subscribed, sizeof(int));
 }
 
 int registerNew(int socketD) {
@@ -286,6 +287,17 @@ void write_speed(int *socketD) {
       printf("[Client]Error at writing the type.\n");
       break;
     }
+
+    if (!write(*socketD, &coordX[index % 5], sizeof(float))) {
+      printf("[Client]Error at writing the speed.\n");
+      break;
+    }
+
+    if (!write(*socketD, &coordY[index % 5], sizeof(float))) {
+      printf("[Client]Error at writing the speed.\n");
+      break;
+    }
+
     if (!write(*socketD, &speeds[index], sizeof(float))) {
       printf("[Client]Error at writing the speed.\n");
       break;
@@ -303,6 +315,7 @@ void write_alert(int *socketD) {
   pthread_detach(pthread_self());
 
   int type = 2;
+  int bytes;
 
   while (keepRunning) {
     signal(SIGINT, stopHandler);
@@ -314,7 +327,11 @@ void write_alert(int *socketD) {
     char location[100];
     bzero(location, 100);
 
-    read(0, location, 100);
+    bytes = read(0, location, 100);
+    if (bytes <= 0)
+      continue;
+    if (location[0] == '\n')
+      continue;
     int length = strlen(location);
     location[length - 1] = '\0';
 
@@ -359,23 +376,20 @@ void read_news(int *socketD) {
       }
       printf("%s\n", alert);
     }
-    if(type==3)
-    {
+    if (type == 3) {
       char *news;
-      if(!(news=read_from_server(*socketD)))
-      {
+      if (!(news = read_from_server(*socketD))) {
         printf("[Client]Error at readin the news from server.\n");
         break;
       }
-      printf("%s\n",news);
+      printf("%s\n", news);
     }
   }
 
   pthread_exit(NULL);
 }
 
-void ask_for_news(int *socketD)
-{
+void ask_for_news(int *socketD) {
   pthread_detach(pthread_self());
 
   int type = 3;
@@ -387,7 +401,7 @@ void ask_for_news(int *socketD)
 
     sleep(30);
 
-    write(*socketD,&type,sizeof(int));
+    write(*socketD, &type, sizeof(int));
   }
 
   pthread_exit(NULL);
@@ -434,16 +448,16 @@ int main(int argc, char *argv[]) {
   pthread_t alertThread;
   pthread_create(&alertThread, NULL, (void *)&write_alert, (void *)socketCopy);
 
-  if(clientInfo.subscribed)
-  {
+  if (clientInfo.subscribed) {
     pthread_t newsThread;
-    pthread_create(&newsThread,NULL,(void*)&ask_for_news,(void*)socketCopy);
+    pthread_create(&newsThread, NULL, (void *)&ask_for_news,
+                   (void *)socketCopy);
   }
 
   int update_time = 5;
   int type = 1;
   int index = 0;
-  while (keepRunning) { //Keep the main thread open.
+  while (keepRunning) { // Keep the main thread open.
   }
   close(socketD);
 }
