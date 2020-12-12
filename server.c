@@ -254,11 +254,22 @@ int correct_user(char *username, char *password, struct clientInfo *client) {
   return 0;
 }
 
+//encrypt the password
+char *encrypt(char *pass)
+{
+  char *encrypted;
+  const char *salt = "$1$etNnh7FA$OlM7eljE/B7F1J4XYNnk81";
+
+  encrypted = crypt(pass, salt);
+
+  return encrypted;
+}
+
 int login(struct args *arg) {
   int tries = 3;
 
   char *question = "Enter your username: ";
-  char *askPass = "Enter your password: ";
+  char *askPass = "Enter your password: \n";
   int status;
 
   while (tries > 0) {
@@ -277,7 +288,9 @@ int login(struct args *arg) {
     if (!(userPass = read_from_client(arg->threadId, arg->clientId)))
       return 0;
 
-    if (correct_user(username, userPass, &arg->client)) {
+    char *encrypted = encrypt(userPass);
+
+    if (correct_user(username, encrypted, &arg->client)) {
       append_client(arg->clientId, arg->client);
 
       corect = 1;
@@ -336,7 +349,9 @@ int registerNew(struct args *arg) {
       if (!read(arg->clientId, &sub, sizeof(int)))
         return 0;
 
-      if (!add_to_db(username, password, sub))
+      char *encrypted = encrypt(password);
+
+      if (!add_to_db(username, encrypted, sub))
         return 0;
 
       char *success = "Successfully registered, ";

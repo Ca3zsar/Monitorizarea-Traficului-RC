@@ -9,8 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 int PORT;
@@ -83,6 +85,39 @@ void receive_client_data(int socketD) {
   read(socketD, &clientInfo.subscribed, sizeof(int));
 }
 
+char *get_pass() {
+  struct termios oflags, nflags;
+  char password[100];
+  bzero(password, 100);
+
+  // disabling echo
+  tcgetattr(fileno(stdin), &oflags);
+  nflags = oflags;
+  nflags.c_lflag &= ~ECHO;
+  nflags.c_lflag |= ECHONL;
+
+  if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
+    printError("tcsetattr");
+  }
+
+  do {
+    bzero(password, 100);
+    scanf("%s", password);
+  } while (password[0] == '\n');
+  password[strlen(password)] = '\0';
+
+  password[strlen(password) - 1] = '\0';
+  char *newpass = (char *)malloc(strlen(password));
+  sprintf(newpass, "%s", password);
+
+  /* restore terminal */
+  if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
+    printError("tcsetattr");
+  }
+
+  return newpass;
+}
+
 int registerNew(int socketD) {
   char *question;
   char *answer;
@@ -119,12 +154,7 @@ int registerNew(int socketD) {
 
       printf("%s\n", answer);
 
-      char pass[100];
-      do {
-        bzero(pass, 100);
-        scanf("%s", pass);
-      } while (pass[0] == '\n');
-      pass[strlen(pass)] = '\0';
+      char *pass = get_pass();
 
       if (!write_to_server(socketD, pass))
         return 0;
@@ -186,15 +216,11 @@ int login(int socketD) {
     if (!(question = read_from_server(socketD)))
       return 0;
 
-    printf("%s\n", question);
+    printf("%s", question);
 
-    char pass[100];
-    bzero(pass, 100);
-    scanf("%s", pass);
+    char *password = get_pass();
 
-    pass[strlen(pass)] = '\0';
-
-    if (!write_to_server(socketD, pass))
+    if (!write_to_server(socketD, password))
       return 0;
 
     if (!read(socketD, &corect, sizeof(int)))
