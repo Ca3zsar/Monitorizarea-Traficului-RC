@@ -260,49 +260,36 @@ char *encrypt(char *pass)
 }
 
 int login(struct args *arg) {
-  int tries = 3;
 
-  char *question = "Enter your username: ";
-  char *askPass = "Enter your password: \n";
   int status;
 
-  while (tries > 0) {
-    if (!write_to_client(arg->threadId, arg->clientId, question))
-      return 0;
     char *username;
 
     if (!(username = read_from_client(arg->threadId, arg->clientId)))
       return 0;
     int corect;
 
-    if (!write_to_client(arg->threadId, arg->clientId, askPass))
-      return 0;
-
     char *userPass;
     if (!(userPass = read_from_client(arg->threadId, arg->clientId)))
       return 0;
 
+    printf("%s\n",userPass);
     char *encrypted = encrypt(userPass);
-
+    printf("%s\n",encrypted);
+    // $1$etNnh7FA$gYaucs.i4MYHJa9mnuv6r/
     if (correct_user(username, encrypted, &arg->client)) {
       append_client(arg->clientId, arg->client);
 
       corect = 1;
       write(arg->clientId, &corect,
             sizeof(int)); // Tell that the name was correct.
-      write_to_client(arg->threadId, arg->clientId, "You are now logged in, ");
       return 1;
     } else {
       corect = 0;
       write(arg->clientId, &corect, sizeof(int));
-
-      char *incorrect = "Incorrect username or password\n";
-      write_to_client(arg->threadId, arg->clientId, incorrect);
-      tries--;
     }
-  }
-  write_to_client(arg->threadId, arg->clientId, "Number of tries exceeded\n");
-  printf("[Thread %d]Client %d disconnected.\n", arg->threadId, arg->clientId);
+  
+  printf("[Thread %d]Client %d didn't logged in\n", arg->threadId, arg->clientId);
   fflush(stdout);
   return 0;
 }
@@ -378,11 +365,6 @@ int registerNew(struct args *arg) {
 }
 
 int validate(struct args *arg) {
-  char *question = "Do you want to log in or register? [L/R]";
-
-  if (!write_to_client(arg->threadId, arg->clientId, question))
-    return 0;
-
   char answer;
   int readLength;
 

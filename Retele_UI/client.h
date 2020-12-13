@@ -15,6 +15,10 @@ public:
     client(QWidget *parent = nullptr);
     ~client();
 
+private slots:
+
+    void on_login_btn_clicked();
+
 private:
     Ui::client *ui;
 };
