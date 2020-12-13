@@ -248,9 +248,8 @@ int correct_user(char *username, char *password, struct clientInfo *client) {
   return 0;
 }
 
-//encrypt the password
-char *encrypt(char *pass)
-{
+// encrypt the password
+char *encrypt(char *pass) {
   char *encrypted;
   const char *salt = "$1$etNnh7FA$OlM7eljE/B7F1J4XYNnk81";
 
@@ -263,33 +262,31 @@ int login(struct args *arg) {
 
   int status;
 
-    char *username;
+  char *username;
 
-    if (!(username = read_from_client(arg->threadId, arg->clientId)))
-      return 0;
-    int corect;
+  if (!(username = read_from_client(arg->threadId, arg->clientId)))
+    return 0;
+  int corect;
 
-    char *userPass;
-    if (!(userPass = read_from_client(arg->threadId, arg->clientId)))
-      return 0;
+  char *userPass;
+  if (!(userPass = read_from_client(arg->threadId, arg->clientId)))
+    return 0;
 
-    printf("%s\n",userPass);
-    char *encrypted = encrypt(userPass);
-    printf("%s\n",encrypted);
-    // $1$etNnh7FA$gYaucs.i4MYHJa9mnuv6r/
-    if (correct_user(username, encrypted, &arg->client)) {
-      append_client(arg->clientId, arg->client);
+  char *encrypted = encrypt(userPass);
+  if (correct_user(username, encrypted, &arg->client)) {
+    append_client(arg->clientId, arg->client);
 
-      corect = 1;
-      write(arg->clientId, &corect,
-            sizeof(int)); // Tell that the name was correct.
-      return 1;
-    } else {
-      corect = 0;
-      write(arg->clientId, &corect, sizeof(int));
-    }
-  
-  printf("[Thread %d]Client %d didn't logged in\n", arg->threadId, arg->clientId);
+    corect = 1;
+    write(arg->clientId, &corect,
+          sizeof(int)); // Tell that the name was correct.
+    return 1;
+  } else {
+    corect = 0;
+    write(arg->clientId, &corect, sizeof(int));
+  }
+
+  printf("[Thread %d]Client %d didn't logged in\n", arg->threadId,
+         arg->clientId);
   fflush(stdout);
   return 0;
 }
@@ -368,33 +365,36 @@ int validate(struct args *arg) {
   char answer;
   int readLength;
 
-  if ((readLength = read(arg->clientId, &answer, sizeof(char))) <= 0) {
-    if (readLength < 0)
-      printf("[Thread %d] Error at reading login option from client %d\n",
-             arg->threadId, arg->clientId);
-    else
-      printf("Client %d disconnected \n", arg->clientId);
-    return 0;
-  }
-
-  printf("[Thread %d] Client %d chose to %s\n", arg->threadId, arg->clientId,
-         answer == 'l' ? "login" : "register");
-
-  if (answer == 'l') {
-    if (!login(arg)) {
+  while (1) {
+    if ((readLength = read(arg->clientId, &answer, sizeof(char))) <= 0) {
+      if (readLength < 0)
+        printf("[Thread %d] Error at reading login option from client %d\n",
+               arg->threadId, arg->clientId);
+      else
+        printf("Client %d disconnected \n", arg->clientId);
       return 0;
-    } else {
-      printf("[Thread %d] Client %d logged in.\n", arg->threadId,
-             arg->clientId);
-      fflush(stdout);
     }
-  } else if (answer == 'r') {
-    if (!registerNew(arg)) {
-      return 0;
-    } else {
-      printf("[Thread %d] Client %d registered a new account.\n", arg->threadId,
-             arg->clientId);
-      fflush(stdout);
+
+    printf("[Thread %d] Client %d chose to %s\n", arg->threadId, arg->clientId,
+           answer == 'l' ? "login" : "register");
+
+    if (answer == 'l') {
+      if (!login(arg)) {
+        continue;
+      } else {
+        printf("[Thread %d] Client %d logged in.\n", arg->threadId,
+               arg->clientId);
+        fflush(stdout);
+        break;
+      }
+    } else if (answer == 'r') {
+      if (!registerNew(arg)) {
+        continue;
+      } else {
+        printf("[Thread %d] Client %d registered a new account.\n",
+               arg->threadId, arg->clientId);
+        fflush(stdout);
+      }
     }
   }
   return 1;

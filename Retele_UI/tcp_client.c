@@ -190,7 +190,6 @@ int registerNew(int socketD) {
 }
 
 int login(int socketD, char *username, char *password) {
-  char *answer;
   int corect;
 
   if (!write_to_server(socketD, username))
