@@ -37,3 +37,13 @@ void client::on_login_btn_clicked()
     validate(socketD,'l',char_user,char_password);
 
 }
+
+void client::on_register_switch_clicked()
+{
+    ui->stackedWidget->setCurrentIndex(1);
+}
+
+void client::on_login_switch_clicked()
+{
+    ui->stackedWidget->setCurrentIndex(0);
+}
