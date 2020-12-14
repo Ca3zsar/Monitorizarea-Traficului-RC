@@ -44,7 +44,6 @@ struct sockaddr_in initialize_server(const char *ip_address) {
 
 void printError(const char *message) {
   perror(message);
-  exit(errno);
 }
 
 int write_to_server(int socketD, char *message) {
@@ -85,121 +84,39 @@ void receive_client_data(int socketD) {
   read(socketD, &clientInfo.subscribed, sizeof(int));
 }
 
-char *get_pass() {
-  struct termios oflags, nflags;
-  char password[100];
-  bzero(password, 100);
-
-  // disabling echo
-  tcgetattr(fileno(stdin), &oflags);
-  nflags = oflags;
-  nflags.c_lflag &= ~ECHO;
-  nflags.c_lflag |= ECHONL;
-
-  if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
-    printError("tcsetattr");
-  }
-
-  do {
-    bzero(password, 100);
-    scanf("%s", password);
-  } while (password[0] == '\n');
-  password[strlen(password)] = '\0';
-
-  password[strlen(password) - 1] = '\0';
-  char *newpass = (char *)malloc(strlen(password));
-  sprintf(newpass, "%s", password);
-
-  /* restore terminal */
-  if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
-    printError("tcsetattr");
-  }
-
-  return newpass;
-}
-
-int registerNew(int socketD) {
-  char *question;
-  char *answer;
-
-  int notRegistered = 1;
+int registerNew(int socketD,char *username,char *password,int subscribed) {
   int corect;
 
-  char c;
-  while ((c = getchar()) != '\n' && c != EOF)
-    ;
+  if (!write_to_server(socketD, username))
+      return -1;
 
-  while (notRegistered) {
-    if (!(question = read_from_server(socketD)))
-      return 0;
+  if (!read(socketD, &corect, sizeof(int)))
+      return -1;
 
-    printf("%s\n", question);
+  if (corect) {
+      if (!write_to_server(socketD, password))
+          return -1;
 
-    char username[100];
-    do {
-      bzero(username, 100);
-      scanf("%s", username);
-    } while (username[0] == '\n');
-
-    username[strlen(username)] = '\0';
-    if (!write_to_server(socketD, username))
-      return 0;
-
-    if (!read(socketD, &corect, sizeof(int)))
-      return 0;
-
-    if (corect) {
-      if (!(answer = read_from_server(socketD)))
-        return 0;
-
-      printf("%s\n", answer);
-
-      char *pass = get_pass();
-
-      if (!write_to_server(socketD, pass))
-        return 0;
-
-      if (!(answer = read_from_server(socketD)))
-        return 0;
-
-      printf("%s\n", answer);
-
-      int sub;
-      do {
-        scanf("%d", &sub);
-        printf("%d\n", sub);
-      } while (sub != 1 && sub != 0);
-      if (!write(socketD, &sub, sizeof(int)))
-        return 0;
-
-      if (!(answer = read_from_server(socketD)))
-        return 0;
-
-      printf("%s\n", answer);
+      if (!write(socketD, &subscribed, sizeof(int)))
+          return -1;
 
       return 1;
-    } else {
-      if (!(answer = read_from_server(socketD)))
-        return 0;
-
-      printf("%s\n", answer);
-    }
+  } else {
+      return 0;
   }
-
-  return 1;
 }
 
 int login(int socketD, char *username, char *password) {
   int corect;
 
   if (!write_to_server(socketD, username))
-      return 0;
+      return -1;
 
   if (!write_to_server(socketD, password))
-      return 0;
+      return -1;
 
   if (!read(socketD, &corect, sizeof(int)))
-      return 0;
+      return -1;
 
   if (corect) {
       return 1;
@@ -208,19 +125,19 @@ int login(int socketD, char *username, char *password) {
   }
 }
 
-int validate(int socketD,char way,char *username, char *password) {
-
-  if (write(socketD, &way, sizeof(char)) <= 0)
+int validate(int socketD,char way,char *username, char *password,int subscribed=0) {
+  int status = 0;
+  if (write(socketD, &way, sizeof(char)) <= 0){
     printError("[Client] Didn't send back the answer");
+    return -1;
+  }
 
   if (way == 'l') {
-    if (!login(socketD,username,password)) {
-      return 0;
-    }
+    status=login(socketD,username,password);
+    if(status<=0)return status;
   } else {
-    if (!registerNew(socketD)) {
-      return 0;
-    }
+     status=registerNew(socketD,username,password,subscribed);
+     if(status<=0)return status;
   }
 
   receive_client_data(socketD);
@@ -393,12 +310,14 @@ int connect_to_server()
     // Create the socket and check for errors.
     if ((socketD = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
       printError("ERROR AT socket() function.\n");
+      return -1;
     }
 
     // Connect to the server
     if (connect(socketD, (struct sockaddr *)&serverStruct,
                 sizeof(struct sockaddr)) == -1) {
       printError("ERROR AT connect().\n");
+      return -1;
     }
     return socketD;
 }

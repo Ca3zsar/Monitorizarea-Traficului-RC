@@ -180,7 +180,7 @@ char *read_from_client(int threadId, int socketD) {
 
   if ((status = read(socketD, &readLength, sizeof(int))) <= 0) {
     if (status == 0)
-      printf("[Thread %d]Client %d disconnected\n.", threadId, socketD);
+      printf("[Thread %d]Client %d disconnected.\n", threadId, socketD);
     else
       printf("[Thread %d] Error at reading length of message from client %d",
              threadId, socketD);
@@ -292,73 +292,47 @@ int login(struct args *arg) {
 }
 
 int registerNew(struct args *arg) {
-  char *question = "Enter your username: ";
-  char *askPass = "Enter your password: ";
-  char *askSub = "Do you want to subscribe? (0/1)";
   int status;
 
-  int notRegistered = 1;
-  while (notRegistered) {
-    if (!write_to_client(arg->threadId, arg->clientId, question))
+  char *username;
+
+  if (!(username = read_from_client(arg->threadId, arg->clientId)))
+    return 0;
+
+  if (!is_in_database(username)) {
+    int corect = 1;
+    if (!write(arg->clientId, &corect, sizeof(int)))
       return 0;
 
-    char *username;
-
-    if (!(username = read_from_client(arg->threadId, arg->clientId)))
+    char *password;
+    if (!(password = read_from_client(arg->threadId, arg->clientId)))
       return 0;
 
-    if (!is_in_database(username)) {
-      fflush(stdout);
-      int corect = 1;
-      if (!write(arg->clientId, &corect, sizeof(int)))
-        return 0;
+    int sub;
+    if (!read(arg->clientId, &sub, sizeof(int)))
+      return 0;
 
-      if (!write_to_client(arg->threadId, arg->clientId, askPass))
-        return 0;
+    char *encrypted = encrypt(password);
 
-      char *password;
-      if (!(password = read_from_client(arg->threadId, arg->clientId)))
-        return 0;
+    if (!add_to_db(username, encrypted, sub))
+      return 0;
 
-      if (!write_to_client(arg->threadId, arg->clientId, askSub))
-        return 0;
+    printf("[Thread %d]Successfully added new user to database.\n",
+           arg->threadId);
+    fflush(stdout);
 
-      int sub;
-      if (!read(arg->clientId, &sub, sizeof(int)))
-        return 0;
+    arg->client.username = (char *)malloc(strlen(username) + 1);
+    sprintf(arg->client.username, "%s", username);
+    arg->client.subscribed = sub;
+    append_client(arg->clientId, arg->client);
 
-      char *encrypted = encrypt(password);
-
-      if (!add_to_db(username, encrypted, sub))
-        return 0;
-
-      char *success = "Successfully registered, ";
-
-      if (!write_to_client(arg->threadId, arg->clientId, success))
-        return 0;
-
-      printf("[Thread %d]Successfully added new user to database.\n",
-             arg->threadId);
-      fflush(stdout);
-
-      arg->client.username = (char *)malloc(strlen(username) + 1);
-      sprintf(arg->client.username, "%s", username);
-      arg->client.subscribed = sub;
-      append_client(arg->clientId, arg->client);
-
-      return 1;
-    } else {
-      int corect = 0;
-      if (!write(arg->clientId, &corect, sizeof(int)))
-        return 0;
-
-      char *failed = "Username already existent!\n";
-      if (!write_to_client(arg->threadId, arg->clientId, failed))
-        return 0;
-    }
+    return 1;
+  } else {
+    int corect = 0;
+    if (!write(arg->clientId, &corect, sizeof(int)))
+      return 0;
+    return 0;
   }
-
-  return 1;
 }
 
 int validate(struct args *arg) {
@@ -394,6 +368,7 @@ int validate(struct args *arg) {
         printf("[Thread %d] Client %d registered a new account.\n",
                arg->threadId, arg->clientId);
         fflush(stdout);
+        break;
       }
     }
   }

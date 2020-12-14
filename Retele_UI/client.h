@@ -23,6 +23,8 @@ private slots:
 
     void on_login_switch_clicked();
 
+    void on_register_btn_clicked();
+
 private:
     Ui::client *ui;
 };
