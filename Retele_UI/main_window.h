@@ -3,6 +3,7 @@
 #pragma once
 #include <QMainWindow>
 
+
 namespace Ui {
 class main_window;
 }
@@ -16,13 +17,22 @@ public:
     ~main_window();
     void showEvent(QShowEvent *ev);
 
+    void set_name();
+    void display_alert(char*);
+
+
     typedef struct {
         int subscribed;
         int socketD;
         char *username;
     } info_to_pass;
 
-    info_to_pass information;
+    typedef struct{
+        main_window *current;
+        info_to_pass information;
+    }obj_to_pass;
+
+    obj_to_pass *thisObj;
 
 private slots:
 

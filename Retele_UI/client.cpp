@@ -33,13 +33,15 @@ void client::pass_info()
 {
     int length = strlen(clientInfo.username);
 
-    this->main_w->information.subscribed = clientInfo.subscribed;
+    this->main_w->thisObj = (main_window::obj_to_pass*)malloc(sizeof(main_window::obj_to_pass));
 
-    this->main_w->information.username = (char*)malloc(length+1);
-    sprintf(this->main_w->information.username,"%s",clientInfo.username);
-    this->main_w->information.username[length]='\0';
+    this->main_w->thisObj->information.subscribed = clientInfo.subscribed;
 
-    this->main_w->information.socketD = socketD;
+    this->main_w->thisObj->information.username = (char*)malloc(length+1);
+    sprintf(this->main_w->thisObj->information.username,"%s",clientInfo.username);
+    this->main_w->thisObj->information.username[length]='\0';
+
+    this->main_w->thisObj->information.socketD = socketD;
 }
 
 void client::on_login_btn_clicked()

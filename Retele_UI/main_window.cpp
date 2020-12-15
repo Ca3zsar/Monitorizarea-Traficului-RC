@@ -25,14 +25,17 @@ float coordX[5] = {47.158857, 47.160379, 47.164124, 47.166358, 47.166092};
 float coordY[5] = {27.58542, 27.586676, 27.581175, 27.577495, 27.570962};
 int keepRunning = 1;
 
-
-typedef struct{
+typedef struct {
     int subscribed;
     int socketD;
     char *username;
 } client_data;
+typedef struct{
+    main_window *current;
+    client_data information;
+}curr_object;
 
-client_data *clientInformation;
+curr_object *currentObject;
 
 int write_to_server(void *socketCopy, char *message) {
   int *socketD = (int*)socketCopy;
@@ -152,6 +155,11 @@ void* write_alert(void *socketCopy) {
   pthread_exit(NULL);
 }
 
+void main_window::display_alert(char *alert)
+{
+
+}
+
 void* read_news(void *socketCopy) {
   printf("[Client] Entering info thread\n");
   pthread_detach(pthread_self());
@@ -181,6 +189,7 @@ void* read_news(void *socketCopy) {
         printf("[Client]Error at reading alert from server.\n");
         break;
       }
+//      display_alert(alert);
       printf("%s\n", alert);
     }
     if (type == 3) {
@@ -214,32 +223,31 @@ void* ask_for_news(void *socketCopy) {
 }
 
 
-void* lobby(void *info) {
+void* lobby(void *object) {
+  currentObject = (curr_object*)malloc(sizeof(curr_object));
+  currentObject = (curr_object*)object;
 
-  clientInformation = (client_data*)malloc(sizeof(client_data));
-  clientInformation = (client_data*)info;
+//  void *socketCopy = &currentObject->information.socketD;
 
-  void *socketCopy = &clientInformation->socketD;
+////   Open a thread for writing the speeds.
+//   pthread_t speedThread;
+//   pthread_create(&speedThread, NULL, &write_speed, (void*)currentObject);
 
-//   Open a thread for writing the speeds.
-   pthread_t speedThread;
-   pthread_create(&speedThread, NULL, &write_speed, (void*)socketCopy);
+//   pthread_t readThread;
+//   pthread_create(&readThread, NULL, &read_news, (void *)currentObject);
 
-   pthread_t readThread;
-   pthread_create(&readThread, NULL, &read_news, (void *)socketCopy);
+//  pthread_t alertThread;
+//  pthread_create(&alertThread, NULL, &write_alert, (void *)currentObject);
 
-  pthread_t alertThread;
-  pthread_create(&alertThread, NULL, &write_alert, (void *)socketCopy);
-
-   if (clientInformation->subscribed) {
-     pthread_t newsThread;
-     pthread_create(&newsThread, NULL, &ask_for_news,
-                    (void *)socketCopy);
-   }
+//   if (currentObject->information->subscribed) {
+//     pthread_t newsThread;
+//     pthread_create(&newsThread, NULL, &ask_for_news,
+//                    (void *)currentObject);
+//   }
   keepRunning = 1;
   while (keepRunning) { // Keep the main thread open.
   }
-  close(clientInformation->socketD);
+  close(currentObject->information.socketD);
   pthread_exit(NULL);
 }
 
@@ -256,11 +264,25 @@ main_window::~main_window()
     delete ui;
 }
 
+void main_window::set_name()
+{
+    char* greeting;
+    greeting = (char*)malloc(strlen(this->thisObj->information.username) + 8);
+    sprintf(greeting,"Hello, %s",this->thisObj->information.username);
+
+    this->ui->hello_label->setText(greeting);
+}
+
 void main_window::showEvent(QShowEvent *ev)
 {
     QMainWindow::showEvent(ev);
 
+    set_name();
+
+    this->thisObj->current = (main_window*)malloc(sizeof(main_window));
+    this->thisObj->current = this;
+
     pthread_t lobby_thread;
-    pthread_create(&lobby_thread,NULL,lobby,&this->information);
+    pthread_create(&lobby_thread,NULL,lobby,&this->thisObj);
 
 }
