@@ -13,13 +13,7 @@ class main_window : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit main_window(QWidget *parent = nullptr);
-    ~main_window();
-    void showEvent(QShowEvent *ev);
-
-    void set_name();
-    void display_alert(char*);
-
+    Ui::main_window *ui;
 
     typedef struct {
         int subscribed;
@@ -34,11 +28,19 @@ public:
 
     obj_to_pass *thisObj;
 
+    explicit main_window(QWidget *parent = nullptr);
+    ~main_window();
+    void showEvent(QShowEvent *ev);
+
+    void set_name();
+
+
+friend void display_alert(obj_to_pass currentObject,char*);
+
 private slots:
 
-private:
-    Ui::main_window *ui;
 
+void on_pushButton_clicked();
 };
 
 #endif // MAIN_WINDOW_H

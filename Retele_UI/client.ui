@@ -29,6 +29,12 @@
       <height>458</height>
      </rect>
     </property>
+    <property name="minimumSize">
+     <size>
+      <width>357</width>
+      <height>458</height>
+     </size>
+    </property>
     <property name="currentIndex">
      <number>0</number>
     </property>

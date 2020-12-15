@@ -88,7 +88,6 @@ void client::on_login_btn_clicked()
             pass_info();
 
             ui->correct_label->setText("");
-
             this->close();
             this->main_w->show();
         }

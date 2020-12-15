@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 const int PORT = 4201;
@@ -429,8 +430,21 @@ int announce_all(struct args *arg, char *alert) {
         return 0;
       }
       char *message;
-      message = (char *)malloc(strlen(alert) + strlen("[ALERTA] : ") + 1);
-      sprintf(message, "[ALERTA] : %s", alert);
+
+      // Get the local time and print it
+      time_t now;
+      struct tm now_tm;
+      struct tm *mytm;
+
+      now = time(NULL);
+      mytm = localtime_r(&now, &now_tm);
+
+      char timestr[50];
+
+      strftime(timestr, sizeof(timestr), "%H:%M:%S", mytm);
+
+      message = (char *)malloc(strlen(alert) + strlen("[] : ") + strlen(timestr) + 1);
+      sprintf(message, "[%s] : %s",timestr, alert);
       if (!write_to_client(arg->threadId, fd, message)) {
         printf("[Thread %d]Failed to send alert to client %d", arg->threadId,
                fd);

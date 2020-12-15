@@ -6,35 +6,41 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>700</width>
-    <height>480</height>
+    <width>900</width>
+    <height>600</height>
    </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>900</width>
+    <height>600</height>
+   </size>
   </property>
   <property name="maximumSize">
    <size>
-    <width>700</width>
-    <height>480</height>
+    <width>900</width>
+    <height>700</height>
    </size>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Monitorizarea Traficului UI</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTextBrowser" name="alert_log">
     <property name="geometry">
      <rect>
-      <x>450</x>
-      <y>120</y>
-      <width>241</width>
-      <height>311</height>
+      <x>50</x>
+      <y>460</y>
+      <width>781</width>
+      <height>81</height>
      </rect>
     </property>
    </widget>
    <widget class="QLabel" name="create_log">
     <property name="geometry">
      <rect>
-      <x>550</x>
-      <y>440</y>
+      <x>750</x>
+      <y>550</y>
       <width>136</width>
       <height>13</height>
      </rect>
@@ -51,8 +57,8 @@
    <widget class="QLabel" name="alert_title">
     <property name="geometry">
      <rect>
-      <x>500</x>
-      <y>90</y>
+      <x>370</x>
+      <y>420</y>
       <width>135</width>
       <height>23</height>
      </rect>
@@ -69,7 +75,7 @@
    <widget class="QLabel" name="hello_label">
     <property name="geometry">
      <rect>
-      <x>580</x>
+      <x>760</x>
       <y>10</y>
       <width>101</width>
       <height>20</height>
@@ -84,12 +90,45 @@
      <string/>
     </property>
    </widget>
+   <widget class="QLineEdit" name="accident_input">
+    <property name="geometry">
+     <rect>
+      <x>50</x>
+      <y>330</y>
+      <width>591</width>
+      <height>61</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+     </font>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton">
+    <property name="geometry">
+     <rect>
+      <x>710</x>
+      <y>330</y>
+      <width>111</width>
+      <height>61</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>13</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Report</string>
+    </property>
+   </widget>
    <widget class="QWidget" name="">
     <property name="geometry">
      <rect>
       <x>0</x>
       <y>30</y>
-      <width>701</width>
+      <width>901</width>
       <height>39</height>
      </rect>
     </property>
@@ -136,13 +175,63 @@
      </item>
     </layout>
    </widget>
+   <widget class="QWidget" name="">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>80</y>
+      <width>901</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <spacer name="horizontalSpacer_3">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="speed_label">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>No announcements about speed limits.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer_4">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>700</width>
+     <width>900</width>
      <height>23</height>
     </rect>
    </property>
